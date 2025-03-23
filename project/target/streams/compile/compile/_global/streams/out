@@ -1,0 +1,4 @@
+[error] C:\factor\IdeaProjects\untitled\project\Dependencies.scala:10:39: value %% is not a member of String
+[error]     val sparkSql = "org.apache.spark" %% "spark-sql" % Version.spark
+[error]                                       ^
+[error] one error found
