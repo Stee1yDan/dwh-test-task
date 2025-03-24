@@ -107,7 +107,6 @@ object TestRun extends App {
       $"explodedPhones".getItem(0).alias("phone"),
       $"explodedPhones".getItem(1).alias("phone_flag"),
       $"email")
-    .show(false)
 
   var preInsuranceDf = explodedInsurance
     .withColumn("system_id", lit("Страхование 1"))
@@ -120,7 +119,6 @@ object TestRun extends App {
       $"explodedPhones".alias("phone"),
       lit(null).alias("phone_flag"),
       $"email")
-    .show(false)
 
   var preMarketDf = market1
     .withColumn("system_id", lit("Маркет 1"))
@@ -133,14 +131,118 @@ object TestRun extends App {
       $"phone",
       lit(null).alias("phone_flag"),
       $"email")
-    .show(false)
-
 
   //Банк - Страховка
   //=======================================================================================================
   //..
 
+  val bankToInsuranceDfPriority100 = preBankDf
+    .join(preInsuranceDf.withColumn("priorityWeight",lit(100)),
+        preBankDf("fio") === preInsuranceDf("fio") &&
+        preBankDf("phone") === preInsuranceDf("phone") &&
+        preBankDf("phone_flag") === 1 &&
+        preBankDf("dr") === preInsuranceDf("dr") &&
+        regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
+          regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
+    .select(
+      preBankDf("system_id"),
+      preBankDf("client_id"),
+      preInsuranceDf("system_id"),
+      preInsuranceDf("client_id"),
+      $"priorityWeight"
+    )
 
+  val bankToInsuranceDfPriority80 = preBankDf
+    .join(preInsuranceDf.withColumn("priorityWeight",lit(80)),
+      preBankDf("fio") === preInsuranceDf("fio") &&
+        preBankDf("phone") === preInsuranceDf("phone") &&
+        preBankDf("phone_flag") === 0 &&
+        preBankDf("dr") === preInsuranceDf("dr") &&
+        regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
+          regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
+    .select(
+      preBankDf("system_id"),
+      preBankDf("client_id"),
+      preInsuranceDf("system_id"),
+      preInsuranceDf("client_id"),
+      $"priorityWeight"
+    )
+
+
+  val bankToInsuranceDfPriority70 = preBankDf
+    .join(preInsuranceDf.withColumn("priorityWeight",lit(70)),
+      preBankDf("fio") === preInsuranceDf("fio") &&
+        preBankDf("email") === preInsuranceDf("email") &&
+        preBankDf("dr") === preInsuranceDf("dr") &&
+        regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
+          regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
+    .select(
+      preBankDf("system_id"),
+      preBankDf("client_id"),
+      preInsuranceDf("system_id"),
+      preInsuranceDf("client_id"),
+      $"priorityWeight"
+    )
+
+  val bankToInsuranceDfPriority60 = preBankDf
+    .join(preInsuranceDf.withColumn("priorityWeight",lit(60)),
+      preBankDf("fio") === preInsuranceDf("fio") &&
+        preBankDf("dr") === preInsuranceDf("dr") &&
+        regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
+          regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
+    .select(
+      preBankDf("system_id"),
+      preBankDf("client_id"),
+      preInsuranceDf("system_id"),
+      preInsuranceDf("client_id"),
+      $"priorityWeight"
+    )
+
+    val bankToInsuranceMatching = bankToInsuranceDfPriority100
+      .unionAll(bankToInsuranceDfPriority80)
+      .unionAll(bankToInsuranceDfPriority70)
+      .unionAll(bankToInsuranceDfPriority60)
+      .show(false)
+
+//  val bankToInsuranceDfPriority80 = preBankDf
+//    .join(preInsuranceDf.withColumn("priorityWeight",lit(80)),
+//      preBankDf("fio") === preInsuranceDf("fio") &&
+//        preBankDf("phone") === preInsuranceDf("phone") &&
+//        preBankDf("dr") === preInsuranceDf("dr") &&
+//        regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
+//          regexp_replace(preInsuranceDf("serial_number"), "\\s+", "")).show(false)
+
+//  val bankToInsuranceDfPriority80 = bankWithPrefixes
+//    .withColumn("phone_flag", $"bank_phones".getItem(1).getItem(1))
+//    .withColumn("phone_num", $"bank_phones".getItem(1).getItem(0))
+//    .join(insuranceWithPrefixes.withColumn("priorityWeight",lit(80)),
+//      $"bank_fio" === $"insurance_full_name" &&
+//        $"bank_phones".getItem(1).getItem(0) === element_at(split($"insurance_phone", "\\s+"),2) &&
+//        $"bank_dr" === $"insurance_dr" &&
+//        regexp_replace($"bank_dul", "\\s+", "") === $"insurance_serial_number", "inner")
+//
+//  val bankToInsuranceDfPriority70 = bankWithPrefixes
+//    .withColumn("phone_flag", lit(null))
+//    .withColumn("phone_num", lit(null))
+//    .join(insuranceWithPrefixes.withColumn("priorityWeight",lit(70)),
+//      $"bank_fio" === $"insurance_full_name" &&
+//        $"bank_email" === "insurance_email" &&
+//        $"bank_dr" === $"insurance_dr" &&
+//        regexp_replace($"bank_dul", "\\s+", "") === $"insurance_serial_number", "inner")
+//
+//  val bankToInsuranceDfPriority50 = bankWithPrefixes
+//    .withColumn("phone_flag", lit(null))
+//    .withColumn("phone_num", lit(null))
+//    .join(insuranceWithPrefixes.withColumn("priorityWeight",lit(50)),
+//      $"bank_fio" === $"insurance_full_name" &&
+//        $"bank_dr" === $"insurance_dr" &&
+//        regexp_replace($"bank_dul", "\\s+", "") === $"insurance_serial_number", "inner")
+//
+//  val bankToInsuranceDf =
+//    bankToInsuranceDfPriority100
+//      .unionAll(bankToInsuranceDfPriority80)
+//      .unionAll(bankToInsuranceDfPriority70)
+//      .unionAll(bankToInsuranceDfPriority50)
 
 
   //Банк - Меркет
