@@ -137,7 +137,10 @@ object TestRun extends App {
   //..
 
   val bankToInsuranceDfPriority100 = preBankDf
-    .join(preInsuranceDf.withColumn("priority_weight",lit(100)),
+    .join(
+      preInsuranceDf
+          .withColumn("priority_weight",lit(100))
+          .withColumn("rule_number", lit(1)),
         preBankDf("fio") === preInsuranceDf("fio") &&
         preBankDf("phone") === preInsuranceDf("phone") &&
         preBankDf("phone_flag") === 0 &&
@@ -149,11 +152,15 @@ object TestRun extends App {
       preBankDf("client_id").alias("bank_client_id"),
       preInsuranceDf("system_id").alias("insurance_system_id"),
       preInsuranceDf("client_id")alias("insurance_client_id"),
-      $"priority_weight"
+      $"priority_weight",
+      $"rule_number"
     )
 
   val bankToInsuranceDfPriority80 = preBankDf
-    .join(preInsuranceDf.withColumn("priority_weight",lit(80)),
+    .join(
+      preInsuranceDf
+        .withColumn("priority_weight",lit(80))
+        .withColumn("rule_number", lit(2)),
       preBankDf("fio") === preInsuranceDf("fio") &&
         preBankDf("phone") === preInsuranceDf("phone") &&
         preBankDf("phone_flag") === 1 &&
@@ -165,12 +172,16 @@ object TestRun extends App {
       preBankDf("client_id").alias("bank_client_id"),
       preInsuranceDf("system_id").alias("insurance_system_id"),
       preInsuranceDf("client_id")alias("insurance_client_id"),
-      $"priority_weight"
+      $"priority_weight",
+      $"rule_number"
     )
 
   val bankToInsuranceDfPriority70 = preBankDf
-    .join(preInsuranceDf.withColumn("priority_weight",lit(70)),
-      preBankDf("fio") === preInsuranceDf("fio") &&
+    .join(
+      preInsuranceDf
+        .withColumn("priority_weight",lit(70))
+        .withColumn("rule_number", lit(3)),
+        preBankDf("fio") === preInsuranceDf("fio") &&
         preBankDf("email") === preInsuranceDf("email") &&
         preBankDf("dr") === preInsuranceDf("dr") &&
         regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
@@ -180,12 +191,16 @@ object TestRun extends App {
       preBankDf("client_id").alias("bank_client_id"),
       preInsuranceDf("system_id").alias("insurance_system_id"),
       preInsuranceDf("client_id").alias("insurance_client_id"),
-      $"priority_weight"
+      $"priority_weight",
+      $"rule_number"
     )
 
   val bankToInsuranceDfPriority60 = preBankDf
-    .join(preInsuranceDf.withColumn("priority_weight",lit(60)),
-      preBankDf("fio") === preInsuranceDf("fio") &&
+    .join(
+      preInsuranceDf
+        .withColumn("priority_weight",lit(60))
+        .withColumn("rule_number", lit(4)),
+        preBankDf("fio") === preInsuranceDf("fio") &&
         preBankDf("dr") === preInsuranceDf("dr") &&
         regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
           regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
@@ -194,7 +209,8 @@ object TestRun extends App {
       preBankDf("client_id").alias("bank_client_id"),
       preInsuranceDf("system_id").alias("insurance_system_id"),
       preInsuranceDf("client_id").alias("insurance_client_id"),
-      $"priority_weight"
+      $"priority_weight",
+      $"rule_number"
     )
 
   val bankToInsuranceMatching = bankToInsuranceDfPriority100
@@ -207,8 +223,8 @@ object TestRun extends App {
         "bank_client_id",
         "insurance_system_id",
         "insurance_client_id")))
-    .select("*")
-    .where("max_weight = priority_weight")
+    .select("*").show(1000)
+//    .where("max_weight = priority_weight")
 //    .groupBy(
 //      "bank_system_id",
 //      "bank_client_id",
@@ -220,6 +236,8 @@ object TestRun extends App {
 //    )
 //    .where($"countingDup" > 1)
 //    .show(1000, false)
+
+
 
   //Банк - Меркет
   //=======================================================================================================
@@ -287,8 +305,6 @@ object TestRun extends App {
         "market_client_id")))
     .select("*")
     .where("max_weight = priority_weight")
-    .select("*")
-    .where("bank_client_id = 1001")
 //      .groupBy(
 //        "bank_system_id",
 //        "bank_client_id",
@@ -299,7 +315,7 @@ object TestRun extends App {
 //        count("*").alias("countingDup") // Агрегатная функция count()
 //      )
 //      .where($"countingDup" > 1)
-      .show(1000, false)
+//      .show(1000, false)
 
   //Граф
   //=======================================================================================================
