@@ -140,15 +140,15 @@ object TestRun extends App {
     .join(preInsuranceDf.withColumn("priorityWeight",lit(100)),
         preBankDf("fio") === preInsuranceDf("fio") &&
         preBankDf("phone") === preInsuranceDf("phone") &&
-        preBankDf("phone_flag") === 1 &&
+        preBankDf("phone_flag") === 0 &&
         preBankDf("dr") === preInsuranceDf("dr") &&
         regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
           regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
     .select(
-      preBankDf("system_id"),
-      preBankDf("client_id"),
-      preInsuranceDf("system_id"),
-      preInsuranceDf("client_id"),
+      preBankDf("system_id").alias("bank_system_id"),
+      preBankDf("client_id").alias("bank_client_id"),
+      preInsuranceDf("system_id").alias("insurance_system_id"),
+      preInsuranceDf("client_id")alias("insurance_client_id"),
       $"priorityWeight"
     )
 
@@ -156,18 +156,17 @@ object TestRun extends App {
     .join(preInsuranceDf.withColumn("priorityWeight",lit(80)),
       preBankDf("fio") === preInsuranceDf("fio") &&
         preBankDf("phone") === preInsuranceDf("phone") &&
-        preBankDf("phone_flag") === 0 &&
+        preBankDf("phone_flag") === 1 &&
         preBankDf("dr") === preInsuranceDf("dr") &&
         regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
           regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
     .select(
-      preBankDf("system_id"),
-      preBankDf("client_id"),
-      preInsuranceDf("system_id"),
-      preInsuranceDf("client_id"),
+      preBankDf("system_id").alias("bank_system_id"),
+      preBankDf("client_id").alias("bank_client_id"),
+      preInsuranceDf("system_id").alias("insurance_system_id"),
+      preInsuranceDf("client_id")alias("insurance_client_id"),
       $"priorityWeight"
     )
-
 
   val bankToInsuranceDfPriority70 = preBankDf
     .join(preInsuranceDf.withColumn("priorityWeight",lit(70)),
@@ -177,10 +176,10 @@ object TestRun extends App {
         regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
           regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
     .select(
-      preBankDf("system_id"),
-      preBankDf("client_id"),
-      preInsuranceDf("system_id"),
-      preInsuranceDf("client_id"),
+      preBankDf("system_id").alias("bank_system_id"),
+      preBankDf("client_id").alias("bank_client_id"),
+      preInsuranceDf("system_id").alias("insurance_system_id"),
+      preInsuranceDf("client_id")alias("insurance_client_id"),
       $"priorityWeight"
     )
 
@@ -191,58 +190,38 @@ object TestRun extends App {
         regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
           regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
     .select(
-      preBankDf("system_id"),
-      preBankDf("client_id"),
-      preInsuranceDf("system_id"),
-      preInsuranceDf("client_id"),
+      preBankDf("system_id").alias("bank_system_id"),
+      preBankDf("client_id").alias("bank_client_id"),
+      preInsuranceDf("system_id").alias("insurance_system_id"),
+      preInsuranceDf("client_id")alias("insurance_client_id"),
       $"priorityWeight"
     )
 
-    val bankToInsuranceMatching = bankToInsuranceDfPriority100
-      .unionAll(bankToInsuranceDfPriority80)
-      .unionAll(bankToInsuranceDfPriority70)
-      .unionAll(bankToInsuranceDfPriority60)
-      .show(false)
+  val bankToInsuranceMatching = bankToInsuranceDfPriority100
+    .unionAll(bankToInsuranceDfPriority80)
+    .unionAll(bankToInsuranceDfPriority70)
+    .unionAll(bankToInsuranceDfPriority60)
+    .withColumn("maxWeight", max("priorityWeight")
+      .over(Window.partitionBy(
+        "bank_system_id",
+        "bank_client_id",
+        "insurance_system_id",
+        "insurance_client_id")))
+    .select("*")
+    .where("maxWeight = priorityWeight")
+//    .groupBy(
+//      "bank_system_id",
+//      "bank_client_id",
+//      "insurance_system_id",
+//      "insurance_client_id"
+//    )
+//    .agg(
+//      count("*").alias("countingDup") // Агрегатная функция count()
+//    )
+//    .where($"countingDup" > 1)
+    .show(1000, false)
 
-//  val bankToInsuranceDfPriority80 = preBankDf
-//    .join(preInsuranceDf.withColumn("priorityWeight",lit(80)),
-//      preBankDf("fio") === preInsuranceDf("fio") &&
-//        preBankDf("phone") === preInsuranceDf("phone") &&
-//        preBankDf("dr") === preInsuranceDf("dr") &&
-//        regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
-//          regexp_replace(preInsuranceDf("serial_number"), "\\s+", "")).show(false)
 
-//  val bankToInsuranceDfPriority80 = bankWithPrefixes
-//    .withColumn("phone_flag", $"bank_phones".getItem(1).getItem(1))
-//    .withColumn("phone_num", $"bank_phones".getItem(1).getItem(0))
-//    .join(insuranceWithPrefixes.withColumn("priorityWeight",lit(80)),
-//      $"bank_fio" === $"insurance_full_name" &&
-//        $"bank_phones".getItem(1).getItem(0) === element_at(split($"insurance_phone", "\\s+"),2) &&
-//        $"bank_dr" === $"insurance_dr" &&
-//        regexp_replace($"bank_dul", "\\s+", "") === $"insurance_serial_number", "inner")
-//
-//  val bankToInsuranceDfPriority70 = bankWithPrefixes
-//    .withColumn("phone_flag", lit(null))
-//    .withColumn("phone_num", lit(null))
-//    .join(insuranceWithPrefixes.withColumn("priorityWeight",lit(70)),
-//      $"bank_fio" === $"insurance_full_name" &&
-//        $"bank_email" === "insurance_email" &&
-//        $"bank_dr" === $"insurance_dr" &&
-//        regexp_replace($"bank_dul", "\\s+", "") === $"insurance_serial_number", "inner")
-//
-//  val bankToInsuranceDfPriority50 = bankWithPrefixes
-//    .withColumn("phone_flag", lit(null))
-//    .withColumn("phone_num", lit(null))
-//    .join(insuranceWithPrefixes.withColumn("priorityWeight",lit(50)),
-//      $"bank_fio" === $"insurance_full_name" &&
-//        $"bank_dr" === $"insurance_dr" &&
-//        regexp_replace($"bank_dul", "\\s+", "") === $"insurance_serial_number", "inner")
-//
-//  val bankToInsuranceDf =
-//    bankToInsuranceDfPriority100
-//      .unionAll(bankToInsuranceDfPriority80)
-//      .unionAll(bankToInsuranceDfPriority70)
-//      .unionAll(bankToInsuranceDfPriority50)
 
 
   //Банк - Меркет
