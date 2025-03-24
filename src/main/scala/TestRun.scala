@@ -125,7 +125,7 @@ object TestRun extends App {
     .select(
       $"system_id",
       $"client_id",
-      concat_ws(" ", $"last_name", $"surname", $"first_name").alias("fio"),
+      concat_ws(" ", $"last_name", $"first_name", $"surname").alias("fio"),
       lit(null).alias("dr"),
       lit(null).alias("serial_number"),
       $"phone",
@@ -137,7 +137,7 @@ object TestRun extends App {
   //..
 
   val bankToInsuranceDfPriority100 = preBankDf
-    .join(preInsuranceDf.withColumn("priorityWeight",lit(100)),
+    .join(preInsuranceDf.withColumn("priority_weight",lit(100)),
         preBankDf("fio") === preInsuranceDf("fio") &&
         preBankDf("phone") === preInsuranceDf("phone") &&
         preBankDf("phone_flag") === 0 &&
@@ -149,11 +149,11 @@ object TestRun extends App {
       preBankDf("client_id").alias("bank_client_id"),
       preInsuranceDf("system_id").alias("insurance_system_id"),
       preInsuranceDf("client_id")alias("insurance_client_id"),
-      $"priorityWeight"
+      $"priority_weight"
     )
 
   val bankToInsuranceDfPriority80 = preBankDf
-    .join(preInsuranceDf.withColumn("priorityWeight",lit(80)),
+    .join(preInsuranceDf.withColumn("priority_weight",lit(80)),
       preBankDf("fio") === preInsuranceDf("fio") &&
         preBankDf("phone") === preInsuranceDf("phone") &&
         preBankDf("phone_flag") === 1 &&
@@ -165,11 +165,11 @@ object TestRun extends App {
       preBankDf("client_id").alias("bank_client_id"),
       preInsuranceDf("system_id").alias("insurance_system_id"),
       preInsuranceDf("client_id")alias("insurance_client_id"),
-      $"priorityWeight"
+      $"priority_weight"
     )
 
   val bankToInsuranceDfPriority70 = preBankDf
-    .join(preInsuranceDf.withColumn("priorityWeight",lit(70)),
+    .join(preInsuranceDf.withColumn("priority_weight",lit(70)),
       preBankDf("fio") === preInsuranceDf("fio") &&
         preBankDf("email") === preInsuranceDf("email") &&
         preBankDf("dr") === preInsuranceDf("dr") &&
@@ -180,11 +180,11 @@ object TestRun extends App {
       preBankDf("client_id").alias("bank_client_id"),
       preInsuranceDf("system_id").alias("insurance_system_id"),
       preInsuranceDf("client_id").alias("insurance_client_id"),
-      $"priorityWeight"
+      $"priority_weight"
     )
 
   val bankToInsuranceDfPriority60 = preBankDf
-    .join(preInsuranceDf.withColumn("priorityWeight",lit(60)),
+    .join(preInsuranceDf.withColumn("priority_weight",lit(60)),
       preBankDf("fio") === preInsuranceDf("fio") &&
         preBankDf("dr") === preInsuranceDf("dr") &&
         regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
@@ -194,21 +194,21 @@ object TestRun extends App {
       preBankDf("client_id").alias("bank_client_id"),
       preInsuranceDf("system_id").alias("insurance_system_id"),
       preInsuranceDf("client_id").alias("insurance_client_id"),
-      $"priorityWeight"
+      $"priority_weight"
     )
 
   val bankToInsuranceMatching = bankToInsuranceDfPriority100
     .unionAll(bankToInsuranceDfPriority80)
     .unionAll(bankToInsuranceDfPriority70)
     .unionAll(bankToInsuranceDfPriority60)
-    .withColumn("maxWeight", max("priorityWeight")
+    .withColumn("max_weight", max("priority_weight")
       .over(Window.partitionBy(
         "bank_system_id",
         "bank_client_id",
         "insurance_system_id",
         "insurance_client_id")))
     .select("*")
-    .where("maxWeight = priorityWeight")
+    .where("max_weight = priority_weight")
 //    .groupBy(
 //      "bank_system_id",
 //      "bank_client_id",
@@ -226,7 +226,10 @@ object TestRun extends App {
   //..
 
   val bankToMarketDfPriority100 = preBankDf
-    .join(preMarketDf.withColumn("priorityWeight",lit(100)),
+    .join(
+      preMarketDf
+          .withColumn("priority_weight",lit(100))
+          .withColumn("rule_number", lit(1)),
         preBankDf("fio") === preMarketDf("fio") &&
         preBankDf("phone") === preMarketDf("phone") &&
         preBankDf("phone_flag") === 0 &&
@@ -236,11 +239,15 @@ object TestRun extends App {
       preBankDf("client_id").alias("bank_client_id"),
       preMarketDf("system_id").alias("market_system_id"),
       preMarketDf("client_id").alias("market_client_id"),
-      $"priorityWeight"
+      $"priority_weight",
+      $"rule_number"
     )
 
   val bankToMarketDfPriority80 = preBankDf
-    .join(preMarketDf.withColumn("priorityWeight",lit(80)),
+    .join(
+      preMarketDf
+          .withColumn("priority_weight",lit(80))
+          .withColumn("rule_number", lit(2)),
         preBankDf("fio") === preMarketDf("fio") &&
         preBankDf("phone") === preMarketDf("phone") &&
         preBankDf("phone_flag") === 0)
@@ -249,11 +256,15 @@ object TestRun extends App {
       preBankDf("client_id").alias("bank_client_id"),
       preMarketDf("system_id").alias("market_system_id"),
       preMarketDf("client_id").alias("market_client_id"),
-      $"priorityWeight"
+      $"priority_weight",
+      $"rule_number"
     )
 
   val bankToMarketDfPriority70 = preBankDf
-    .join(preMarketDf.withColumn("priorityWeight",lit(70)),
+    .join(
+      preMarketDf
+          .withColumn("priority_weight",lit(70))
+          .withColumn("rule_number", lit(3)),
         preBankDf("fio") === preMarketDf("fio") &&
         preBankDf("email") === preMarketDf("email"))
     .select(
@@ -261,34 +272,34 @@ object TestRun extends App {
       preBankDf("client_id").alias("bank_client_id"),
       preMarketDf("system_id").alias("market_system_id"),
       preMarketDf("client_id").alias("market_client_id"),
-      $"priorityWeight"
+      $"priority_weight",
+      $"rule_number"
     )
-
 
   val bankToMarketMatching = bankToMarketDfPriority100
     .unionAll(bankToMarketDfPriority80)
     .unionAll(bankToMarketDfPriority70)
-    .withColumn("maxWeight", max("priorityWeight")
+    .withColumn("max_weight", max("priority_weight")
       .over(Window.partitionBy(
         "bank_system_id",
         "bank_client_id",
         "market_system_id",
         "market_client_id")))
     .select("*")
-    .where("maxWeight = priorityWeight")
-      .groupBy(
-        "bank_system_id",
-        "bank_client_id",
-        "market_system_id",
-        "market_client_id"
-      )
-      .agg(
-        count("*").alias("countingDup") // Агрегатная функция count()
-      )
-      .where($"countingDup" > 1)
+    .where("max_weight = priority_weight")
+    .select("*")
+    .where("bank_client_id = 1001")
+//      .groupBy(
+//        "bank_system_id",
+//        "bank_client_id",
+//        "market_system_id",
+//        "market_client_id"
+//      )
+//      .agg(
+//        count("*").alias("countingDup") // Агрегатная функция count()
+//      )
+//      .where($"countingDup" > 1)
       .show(1000, false)
-
-
 
   //Граф
   //=======================================================================================================
