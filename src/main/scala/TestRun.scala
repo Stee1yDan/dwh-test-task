@@ -179,7 +179,7 @@ object TestRun extends App {
       preBankDf("system_id").alias("bank_system_id"),
       preBankDf("client_id").alias("bank_client_id"),
       preInsuranceDf("system_id").alias("insurance_system_id"),
-      preInsuranceDf("client_id")alias("insurance_client_id"),
+      preInsuranceDf("client_id").alias("insurance_client_id"),
       $"priorityWeight"
     )
 
@@ -193,7 +193,7 @@ object TestRun extends App {
       preBankDf("system_id").alias("bank_system_id"),
       preBankDf("client_id").alias("bank_client_id"),
       preInsuranceDf("system_id").alias("insurance_system_id"),
-      preInsuranceDf("client_id")alias("insurance_client_id"),
+      preInsuranceDf("client_id").alias("insurance_client_id"),
       $"priorityWeight"
     )
 
@@ -219,14 +219,75 @@ object TestRun extends App {
 //      count("*").alias("countingDup") // Агрегатная функция count()
 //    )
 //    .where($"countingDup" > 1)
-    .show(1000, false)
-
-
-
+//    .show(1000, false)
 
   //Банк - Меркет
   //=======================================================================================================
   //..
+
+  val bankToMarketDfPriority100 = preBankDf
+    .join(preMarketDf.withColumn("priorityWeight",lit(100)),
+        preBankDf("fio") === preMarketDf("fio") &&
+        preBankDf("phone") === preMarketDf("phone") &&
+        preBankDf("phone_flag") === 0 &&
+        preBankDf("email") === preMarketDf("email"))
+    .select(
+      preBankDf("system_id").alias("bank_system_id"),
+      preBankDf("client_id").alias("bank_client_id"),
+      preMarketDf("system_id").alias("market_system_id"),
+      preMarketDf("client_id").alias("market_client_id"),
+      $"priorityWeight"
+    )
+
+  val bankToMarketDfPriority80 = preBankDf
+    .join(preMarketDf.withColumn("priorityWeight",lit(80)),
+        preBankDf("fio") === preMarketDf("fio") &&
+        preBankDf("phone") === preMarketDf("phone") &&
+        preBankDf("phone_flag") === 0)
+    .select(
+      preBankDf("system_id").alias("bank_system_id"),
+      preBankDf("client_id").alias("bank_client_id"),
+      preMarketDf("system_id").alias("market_system_id"),
+      preMarketDf("client_id").alias("market_client_id"),
+      $"priorityWeight"
+    )
+
+  val bankToMarketDfPriority70 = preBankDf
+    .join(preMarketDf.withColumn("priorityWeight",lit(70)),
+        preBankDf("fio") === preMarketDf("fio") &&
+        preBankDf("email") === preMarketDf("email"))
+    .select(
+      preBankDf("system_id").alias("bank_system_id"),
+      preBankDf("client_id").alias("bank_client_id"),
+      preMarketDf("system_id").alias("market_system_id"),
+      preMarketDf("client_id").alias("market_client_id"),
+      $"priorityWeight"
+    )
+
+
+  val bankToMarketMatching = bankToMarketDfPriority100
+    .unionAll(bankToMarketDfPriority80)
+    .unionAll(bankToMarketDfPriority70)
+    .withColumn("maxWeight", max("priorityWeight")
+      .over(Window.partitionBy(
+        "bank_system_id",
+        "bank_client_id",
+        "market_system_id",
+        "market_client_id")))
+    .select("*")
+    .where("maxWeight = priorityWeight")
+      .groupBy(
+        "bank_system_id",
+        "bank_client_id",
+        "market_system_id",
+        "market_client_id"
+      )
+      .agg(
+        count("*").alias("countingDup") // Агрегатная функция count()
+      )
+      .where($"countingDup" > 1)
+      .show(1000, false)
+
 
 
   //Граф
