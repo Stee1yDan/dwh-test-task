@@ -1,6 +1,6 @@
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.types.{IntegerType, LongType, StructField, StructType}
-import org.apache.spark.graphx.{Edge, Graph, GraphLoader, VertexId}
+import org.apache.spark.graphx.{Edge, Graph, GraphLoader, VertexId, VertexRDD}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.expressions.Window
 
@@ -57,10 +57,10 @@ object TestRun extends App {
         $"client_id".between(900,1000) ||
         $"client_id".isin(1000,1002,1006))
     .withColumn("new_id", $"client_id" + 1500)
-    .withColumn("doc_num", when($"serial_number".isNull, $"inn").otherwise($"serial_number"))
+    .withColumn("doc_num", when($"serial_number".isNull, $"inn").otherwise(regexp_replace($"serial_number", "\\s+", "")))
     .withColumn("doc_type", when($"serial_number".isNull, lit("ИНН")).otherwise(lit("Паспорт РФ")))
     .withColumn("validEmail", when($"email".rlike(emailRegex), $"email").otherwise(null))
-    .withColumn("phones", concat_ws(";", $"phone0", $"phone1", $"phone3"))
+    .withColumn("phones", concat_ws(";", coalesce($"phone0", lit("")), coalesce($"phone1", lit("")), coalesce($"phone3", lit("")))) //coalesce?
     .select(
       $"new_id".cast(IntegerType).alias("client_id"),
       $"fio".alias("full_name"),
@@ -89,6 +89,10 @@ object TestRun extends App {
       $"validEmail".alias("email"))
     //.where($"client_id" > 4000)
 
+//  bank1.show(false)
+//  insurance1.show(false)
+//  market1.show(false)
+
   //Формирование исходной таблицы для матчинга
   //=======================================================================================================
   //..
@@ -116,7 +120,7 @@ object TestRun extends App {
       $"full_name".alias("fio"),
       $"dr",
       $"serial_number",
-      $"explodedPhones".alias("phone"),
+      $"explodedPhones".alias("phone"), // Нужно ли обрабатывать телефоны?
       lit(null).alias("phone_flag"),
       $"email")
 
@@ -131,6 +135,13 @@ object TestRun extends App {
       $"phone",
       lit(null).alias("phone_flag"),
       $"email")
+
+  val final_unionized_df =
+    preBankDf
+      .unionAll(preInsuranceDf)
+      .unionAll(preMarketDf)
+      .where("fio = 'Бородач Александр Радионович'")
+      //.show(false)
 
   //Банк - Страховка
   //=======================================================================================================
@@ -223,8 +234,8 @@ object TestRun extends App {
         "bank_client_id",
         "insurance_system_id",
         "insurance_client_id")))
-    .select("*").show(1000)
-//    .where("max_weight = priority_weight")
+    .select($"*")
+    .where("max_weight = priority_weight")
 //    .groupBy(
 //      "bank_system_id",
 //      "bank_client_id",
@@ -235,9 +246,6 @@ object TestRun extends App {
 //      count("*").alias("countingDup") // Агрегатная функция count()
 //    )
 //    .where($"countingDup" > 1)
-//    .show(1000, false)
-
-
 
   //Банк - Меркет
   //=======================================================================================================
@@ -321,66 +329,63 @@ object TestRun extends App {
   //=======================================================================================================
   //..
 
-//  case class BankInsEdge(bankClientId: Long, insClientId: Long, rules: Array[Int])
-//  val bankInsEdges = Seq(
-//    BankInsEdge(1, 1501, Array(100)),
-//    BankInsEdge(2, 1502, Array(80)),
-//  )
-//  case class BankMarketEdge(bankClientId: Long, marketClientId: Long, rules: Array[Int])
-//  val bankMarketEdges = Seq(
-//    BankMarketEdge(3, 3003, Array(100)),
-//    BankMarketEdge(4, 3004, Array(70)),
-//  )
-//
-//  val bankVertices: RDD[(VertexId, String)] = bankClients.map(client =>
-//    (s"1_${client.clientId}".hashCode.toLong, s"Bank_1_${client.clientId}")
-//  )
-//  val insVertices: RDD[(VertexId, String)] = insuranceClients.map(client =>
-//    (s"2_${client.clientId}".hashCode.toLong, s"Insurance_1_${client.clientId}")
-//  )
-//  val marketVertices: RDD[(VertexId, String)] = marketClients.map(client =>
-//    (s"3_${client.clientId}".hashCode.toLong, s"Market_1_${client.clientId}")
-//  )
-//
-//  val allVertices = bankVertices.union(insVertices).union(marketVertices)
-//
-//  val bankInsEdgesRDD: RDD[Edge[Array[Int]]] = bankInsEdges.map { edge =>
-//    val srcId = s"1_${edge.bankClientId}".hashCode.toLong
-//    val dstId = s"2_${edge.insClientId}".hashCode.toLong
-//    Edge(srcId, dstId, edge.rules)
-//  }
-//
-//  val bankMarketEdgesRDD: RDD[Edge[Array[Int]]] = bankMarketEdges.map { edge =>
-//    val srcId = s"1_${edge.bankClientId}".hashCode.toLong
-//    val dstId = s"3_${edge.marketClientId}".hashCode.toLong
-//    Edge(srcId, dstId, edge.rules)
-//  }
-//
-//  val allEdges = bankInsEdgesRDD.union(bankMarketEdgesRDD)
-//
-//  val graph = Graph(allVertices, allEdges)
-//
-//  val connectedComponents = graph.connectedComponents().vertices
-//
-//  val clusters = connectedComponents.map { case (vertexId, clusterId) =>
-//    (clusterId, vertexId)
-//  }.groupByKey().map { case (clusterId, vertices) =>
-//    (clusterId, vertices.toSet)
-//  }
-//
-//  clusters.foreach { case (clusterId, vertexIds) =>
-//    println(s"Cluster $clusterId contains vertices: ${vertexIds.mkString(", ")}")
-//  }
-//
-//  val edgeRules = graph.edges.map(edge =>
-//    (edge.srcId, edge.dstId, edge.attr)
-//  )
-//
-//  case class ClusterResult(clusterId: Long, systemClientId: String, rules: Array[Int])
-//  val clusterDF = clusters.flatMap { case (clusterId, vertices) =>
-//    vertices.map(vertex => ClusterResult(clusterId, vertex.toString, Array())) // Дополнить правилами
-//  }
-//
-//  clusterDF.write.parquet("clusters_output")
+  val bankToInsuranceRenamed = bankToInsuranceMatching
+    .select(
+      $"bank_system_id",
+      $"bank_client_id",
+      $"insurance_system_id".as("partner_system_id"),
+      $"insurance_client_id".as("partner_client_id"),
+      $"rule_number", $"priority_weight")
+
+  val bankToMarketRenamed = bankToMarketMatching
+    .select(
+      $"bank_system_id",
+      $"bank_client_id",
+      $"market_system_id".as("partner_system_id"),
+      $"market_client_id".as("partner_client_id"),
+      $"rule_number", $"priority_weight")
+
+  //bankToMarketRenamed.select("*").where("bank_client_id = 1001").show()
+
+  val allEdgesDF = bankToInsuranceRenamed.unionAll(bankToMarketRenamed)
+    .withColumn("src", $"bank_client_id".cast("long"))
+    .withColumn("dst", $"partner_client_id".cast("long"))
+    .withColumn("rule_arr", array($"rule_number"))
+    .select("src", "dst", "rule_arr")
+
+  val edgesRDD: RDD[Edge[Array[Int]]] = allEdgesDF.rdd.map(row => {
+    val srcId = row.getAs[Long]("src")
+    val dstId = row.getAs[Long]("dst")
+    val rules = row.getAs[Seq[Int]]("rule_arr").toArray
+    Edge(srcId, dstId, rules)
+  })
+
+  val verticesRDD: RDD[(VertexId, String)] = allEdgesDF
+    .select("src")
+    .union(allEdgesDF.select("dst"))
+    .rdd
+    .map(row => {
+      val id = row.getAs[Long](0)
+      //println((id, s"Client_$id"))
+      (id, s"Client_$id")
+    })
+
+  val graph = Graph(verticesRDD, edgesRDD)
+
+  val connectedComponents: VertexRDD[VertexId] = graph.connectedComponents().vertices
+
+  val ccDF = connectedComponents.toDF("client_id", "cluster_id")
+
+  //ccDF.select("*").where("cluster_id = 1001").show()
+
+  val bankToInsuranceResult = bankToInsuranceRenamed
+    .withColumn("bank_client_id_long", $"bank_client_id".cast("long"))
+    .join(ccDF, $"bank_client_id_long" === ccDF("client_id"), "left")
+    .show()
+
+  val bankToMarketResult = bankToInsuranceRenamed
+    .withColumn("bank_client_id_long", $"bank_client_id".cast("long"))
+    .join(ccDF, $"bank_client_id_long" === ccDF("client_id"), "left")
+    .show()
 
 }
