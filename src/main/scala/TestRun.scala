@@ -43,7 +43,13 @@ object TestRun extends App {
       substring($"spacelessDul".cast("string"), 5, 8)
     ))
     .withColumn("validEmail", when($"email".rlike(emailRegex), $"email").otherwise(null))
-    .select($"client_id", $"fio", $"validDul".alias("dul"), $"dr", $"phones", $"validEmail".alias("email"))
+    .select(
+      $"client_id",
+      $"fio",
+      $"validDul".alias("dul"),
+      $"dr",
+      $"phones",
+      $"validEmail".alias("email"))
 
   val insurance1 = df.filter(
         $"client_id".between(100,300) ||
@@ -54,8 +60,15 @@ object TestRun extends App {
     .withColumn("doc_num", when($"serial_number".isNull, $"inn").otherwise($"serial_number"))
     .withColumn("doc_type", when($"serial_number".isNull, lit("ИНН")).otherwise(lit("Паспорт РФ")))
     .withColumn("validEmail", when($"email".rlike(emailRegex), $"email").otherwise(null))
-    .withColumn("phones", concat_ws(" ", $"phone0", $"phone1", $"phone3"))
-    .select($"new_id".cast(IntegerType).alias("client_id"), $"fio".alias("full_name"), $"doc_num".alias("serial_number"), $"doc_type", $"dr", $"phones".alias("phone"), $"validEmail".alias("email"))
+    .withColumn("phones", concat_ws(";", $"phone0", $"phone1", $"phone3"))
+    .select(
+      $"new_id".cast(IntegerType).alias("client_id"),
+      $"fio".alias("full_name"),
+      $"doc_num".alias("serial_number"),
+      $"doc_type",
+      $"dr",
+      $"phones".alias("phone"),
+      $"validEmail".alias("email"))
 
   val market1 = df.filter(
         $"client_id".between(800,900) ||
@@ -67,253 +80,72 @@ object TestRun extends App {
     .withColumn("surname", element_at($"name_parts",-1))
     .withColumn("last_name", element_at($"name_parts",1))
     .withColumn("validEmail", when($"email".rlike(emailRegex), $"email").otherwise(null))
-    .select($"new_id".cast(IntegerType).alias("client_id"), $"first_name",$"surname",$"last_name", $"phone0".alias("phone"), $"validEmail".alias("email")) //нужен ли coalesce?
+    .select(
+      $"new_id".cast(IntegerType).alias("client_id"),
+      $"first_name",
+      $"surname",
+      $"last_name",
+      $"phone0".alias("phone"),
+      $"validEmail".alias("email"))
     //.where($"client_id" > 4000)
+
+  //Формирование исходной таблицы для матчинга
+  //=======================================================================================================
+  //..
+
+  val explodedBank = bank1.withColumn("explodedPhones", explode($"phones"));
+  val explodedInsurance = insurance1.withColumn("explodedPhones", explode(split(coalesce($"phone"), ";")))
+
+  val preBankDf = explodedBank
+    .withColumn("system_id", lit("Банк 1"))
+    .select(
+      $"system_id",
+      $"client_id",
+      $"fio",
+      $"dr",
+      $"dul".alias("serial_number"),
+      $"explodedPhones".getItem(0).alias("phone"),
+      $"explodedPhones".getItem(1).alias("phone_flag"),
+      $"email")
+    .show(false)
+
+  var preInsuranceDf = explodedInsurance
+    .withColumn("system_id", lit("Страхование 1"))
+    .select(
+      $"system_id",
+      $"client_id",
+      $"full_name".alias("fio"),
+      $"dr",
+      $"serial_number",
+      $"explodedPhones".alias("phone"),
+      lit(null).alias("phone_flag"),
+      $"email")
+    .show(false)
+
+  var preMarketDf = market1
+    .withColumn("system_id", lit("Маркет 1"))
+    .select(
+      $"system_id",
+      $"client_id",
+      concat_ws(" ", $"last_name", $"surname", $"first_name").alias("fio"),
+      lit(null).alias("dr"),
+      lit(null).alias("serial_number"),
+      $"phone",
+      lit(null).alias("phone_flag"),
+      $"email")
+    .show(false)
+
 
   //Банк - Страховка
   //=======================================================================================================
   //..
 
-  val bankToInsuranceDfPriority100 = bank1.withColumn("phone_flag", $"phones".getItem(0).getItem(1))
-    .join(insurance1.withColumn("priorityWeight",lit(100)),
-        bank1("fio") === insurance1("full_name") &&
-        bank1("phones").getItem(0).getItem(0) === element_at(split(insurance1("phone"), "\\s+"),1) &&
-        bank1("dr") === insurance1("dr") &&
-        regexp_replace(bank1("dul"), "\\s+", "") === insurance1("serial_number"), "inner")
-    .select(
-      bank1("client_id").alias("bank_id"),
-      insurance1("client_id").alias("insurance_id"),
-      $"fio",
-      bank1("dr"),
-      $"serial_number",
-      bank1("phones").getItem(1).getItem(0).alias("phone"),
-      $"phone_flag",
-      bank1("email"),
-      $"priorityWeight")
 
-  val bankToInsuranceDfPriority80 = bank1.withColumn("phone_flag", $"phones".getItem(1).getItem(1))
-    .join(insurance1.withColumn("priorityWeight",lit(80)),
-        bank1("fio") === insurance1("full_name") &&
-        bank1("phones").getItem(1).getItem(0) === element_at(split(insurance1("phone"), "\\s+"),2) &&
-        bank1("dr") === insurance1("dr") &&
-        regexp_replace(bank1("dul"), "\\s+", "") === insurance1("serial_number"), "inner")
-    .select(
-      bank1("client_id").alias("bank_id"),
-      insurance1("client_id").alias("insurance_id"),
-      $"fio",
-      bank1("dr"),
-      $"serial_number",
-      bank1("phones").getItem(1).getItem(0).alias("phone"),
-      $"phone_flag",
-      bank1("email"),
-      $"priorityWeight")
-
-  val bankToInsuranceDfPriority70 = bank1.withColumn("phone_flag", lit(null))
-    .join(insurance1.withColumn("priorityWeight",lit(70)),
-        bank1("fio") === insurance1("full_name") &&
-        bank1("email") === insurance1("email") &&
-        bank1("dr") === insurance1("dr") &&
-        regexp_replace(bank1("dul"), "\\s+", "") === insurance1("serial_number"), "inner")
-    .select(
-      bank1("client_id").alias("bank_id"),
-      insurance1("client_id").alias("insurance_id"),
-      $"fio",
-      bank1("dr"),
-      $"serial_number",
-      bank1("phones").getItem(1).getItem(0).alias("phone"),
-      $"phone_flag",
-      bank1("email"),
-      $"priorityWeight")
-
-  val bankToInsuranceDfPriority50 = bank1.withColumn("phone_flag", lit(null))
-    .join(insurance1.withColumn("priorityWeight",lit(50)),
-        bank1("fio") === insurance1("full_name") &&
-        bank1("dr") === insurance1("dr") &&
-        regexp_replace(bank1("dul"), "\\s+", "") === insurance1("serial_number"), "inner")
-    .select(
-      bank1("client_id").alias("bank_id"),
-      insurance1("client_id").alias("insurance_id"),
-      $"fio",
-      bank1("dr"),
-      $"serial_number",
-      bank1("phones").getItem(1).getItem(0).alias("phone"),
-      $"phone_flag",
-      bank1("email"),
-      $"priorityWeight")
-
-  val bankToInsuranceDf =
-    bankToInsuranceDfPriority100
-      .unionAll(bankToInsuranceDfPriority80)
-      .unionAll(bankToInsuranceDfPriority70)
-      .unionAll(bankToInsuranceDfPriority50)
-
-  val bankToInsuranceMatchedRecords = bankToInsuranceDf
-    .withColumn("maxWeight", max("priorityWeight").over(Window.partitionBy("bank_id")))
-    .withColumn("system_id", lit("Банк 1"))
-    .select(
-      $"bank_id".alias("client_id"),
-      $"system_id",
-      $"fio",
-      bank1("dr"),
-      $"serial_number",
-      $"phone",
-      $"phone_flag",
-      bank1("email"))
-    .where("maxWeight = priorityWeight")
-
-  val insuranceToBankMatchedRecords = bankToInsuranceDf
-    .withColumn("maxWeight", max("priorityWeight").over(Window.partitionBy("insurance_id")))
-    .withColumn("system_id", lit("Страхование 1"))
-    .select(
-      $"insurance_id".alias("client_id"),
-      $"system_id",
-      $"fio",
-      bank1("dr"),
-      $"serial_number",
-      $"phone",
-      $"phone_flag",
-      bank1("email"))
-    .where("maxWeight = priorityWeight")
-
-  bankToInsuranceMatchedRecords.unionAll(insuranceToBankMatchedRecords).orderBy($"client_id")//.show(1000, false)
-
-  //  val bankMatching = bankToInsuranceDf
-//    .select($"bank_id",  $"fio", $"dr", $"serial_number", $"phone", $"phone_flag", $"email", $"priorityWeight")
-//    .groupBy($"bank_id",  $"fio", $"dr", $"serial_number", $"phone", $"phone_flag", $"email")
-//    .agg(max($"priorityWeight"))
-//    .show(false)
-
-  //    val bankToInsuranceDf =
-  //    bank1.withColumn("phone_flag", $"phones".getItem(0).getItem(1))
-  //      .join(insurance1.withColumn("priorityWeight",lit(100)),
-  //          bank1("fio") === insurance1("full_name") &&
-  //          bank1("phones").getItem(0).getItem(0) === element_at(split(insurance1("phone"), "\\s+"),1) &&
-  //          bank1("dr") === insurance1("dr") &&
-  //          regexp_replace(bank1("dul"), "\\s+", "") === insurance1("serial_number"), "left")
-  //      .unionAll(bank1.withColumn("phone_flag", $"phones".getItem(1).getItem(1))
-  //        .join(insurance1.withColumn("priorityWeight",lit(80)),
-  //          bank1("fio") === insurance1("full_name") &&
-  //          bank1("phones").getItem(1).getItem(0) === element_at(split(insurance1("phone"), "\\s+"),2) &&
-  //          bank1("dr") === insurance1("dr") &&
-  //          regexp_replace(bank1("dul"), "\\s+", "") === insurance1("serial_number"), "left"))
-  //      .unionAll(bank1.withColumn("phone_flag", lit(null))
-  //        .join(insurance1.withColumn("priorityWeight",lit(70)),
-  //          bank1("fio") === insurance1("full_name") &&
-  //          bank1("email") === insurance1("email") &&
-  //          bank1("dr") === insurance1("dr") &&
-  //          regexp_replace(bank1("dul"), "\\s+", "") === insurance1("serial_number"), "left"))
-  //      .unionAll(bank1.withColumn("phone_flag", lit(null))
-  //        .join(insurance1.withColumn("priorityWeight",lit(50)),
-  //          bank1("fio") === insurance1("full_name") &&
-  //          bank1("dr") === insurance1("dr") &&
-  //          regexp_replace(bank1("dul"), "\\s+", "") === insurance1("serial_number"), "left"))
-  //      .select(bank1("client_id"), insurance1("client_id"),  $"fio", bank1("dr"), $"serial_number", $"phone", $"phone_flag", bank1("email"), $"priorityWeight")
-  //      .where(bank1("client_id") > 1000)
-  //      .show()
 
 
   //Банк - Меркет
   //=======================================================================================================
   //..
-
-  val bankToMarketDfPriority100 = bank1.withColumn("phone_flag", $"phones".getItem(0).getItem(1))
-    .join(market1.withColumn("priorityWeight",lit(100)),
-        bank1("fio") === concat_ws(" ", market1("last_name"), market1("first_name"), market1("surname")) &&
-        bank1("phones").getItem(0).getItem(0) === market1("phone") &&
-        bank1("email") === market1("email"), "inner")
-    .select(
-      bank1("client_id").alias("bank_id"),
-      market1("client_id").alias("market_id"),
-      $"fio", bank1("dr"),
-      $"dul".alias("serial_number"),
-      $"phone",
-      $"phone_flag",
-      bank1("email"),
-      $"priorityWeight")
-
-  val bankToMarketDfPriority80 = bank1.withColumn("phone_flag", $"phones".getItem(0).getItem(1))
-    .join(market1.withColumn("priorityWeight",lit(80)),
-        bank1("fio") === concat_ws(" ", market1("last_name"), market1("first_name"), market1("surname")) &&
-        bank1("phones").getItem(0).getItem(0) === market1("phone"), "inner")
-    .select(
-      bank1("client_id").alias("bank_id"),
-      market1("client_id").alias("market_id"),
-      $"fio", bank1("dr"),
-      $"dul".alias("serial_number"),
-      $"phone",
-      $"phone_flag",
-      bank1("email"),
-      $"priorityWeight")
-
-  val bankToMarketDfPriority70 = bank1.withColumn("phone_flag", lit(null))
-    .join(market1.withColumn("priorityWeight",lit(70)),
-        bank1("fio") === concat_ws(" ", market1("last_name"), market1("first_name"), market1("surname")) &&
-        bank1("email") === market1("email"), "inner")
-    .select(
-      bank1("client_id").alias("bank_id"),
-      market1("client_id").alias("market_id"),
-      $"fio", bank1("dr"),
-      $"dul".alias("serial_number"),
-      $"phone",
-      $"phone_flag",
-      bank1("email"),
-      $"priorityWeight")
-
-  val bankToMarketDf =
-    bankToMarketDfPriority100
-      .unionAll(bankToMarketDfPriority80)
-      .unionAll(bankToMarketDfPriority70)
-
-  val bankToMarketMatchedRecords = bankToMarketDf
-    .withColumn("maxWeight", max("priorityWeight").over(Window.partitionBy("bank_id")))
-    .withColumn("system_id", lit("Банк 1"))
-    .select(
-      $"bank_id".alias("client_id"),
-      $"system_id",
-      $"fio",
-      bank1("dr"),
-      $"serial_number",
-      $"phone",
-      $"phone_flag",
-      bank1("email"),
-      $"priorityWeight")
-    .where("maxWeight = priorityWeight")
-
-  val marketToBankMatchedRecords = bankToMarketDf
-    .withColumn("maxWeight", max("priorityWeight").over(Window.partitionBy("market_id")))
-    .withColumn("system_id", lit("Маркет 1"))
-    .select(
-      $"market_id".alias("client_id"),
-      $"system_id",
-      $"fio",
-      bank1("dr"),
-      $"serial_number",
-      $"phone",
-      $"phone_flag",
-      bank1("email"),
-      $"priorityWeight")
-    .where("maxWeight = priorityWeight")
-
-  bankToMarketMatchedRecords.unionAll(marketToBankMatchedRecords)
-    .orderBy($"client_id")
-    .where($"fio".isin("Бородач Александр Радионович"))
-    .show(1000, false)
-
-//  val bankToMarketDf =
-//    bank1.withColumn("phone_flag", $"phones".getItem(0).getItem(1))
-//      .join(market1.withColumn("priorityWeight",lit(100)),
-//          bank1("fio") === concat_ws(" ", market1("last_name"), market1("first_name"), market1("surname")) &&
-//          bank1("phones").getItem(0).getItem(0) === market1("phone") &&
-//          bank1("email") === market1("email"), "full")
-//      .unionAll(bank1.withColumn("phone_flag", $"phones".getItem(0).getItem(1))
-//        .join(market1.withColumn("priorityWeight",lit(80)),
-//            bank1("fio") === concat_ws(" ", market1("last_name"), market1("first_name"), market1("surname")) &&
-//            bank1("phones").getItem(0).getItem(0) === market1("phone"), "full"))
-//      .unionAll(bank1.withColumn("phone_flag", lit(null))
-//        .join(market1.withColumn("priorityWeight",lit(70)),
-//            bank1("fio") === concat_ws(" ", market1("last_name"), market1("first_name"), market1("surname")) &&
-//            bank1("email") === market1("email"), "full"))
-//      .select(bank1("client_id"), market1("client_id"), $"fio", bank1("dr"), $"dul", $"phone", $"phone_flag", bank1("email"), $"priorityWeight")
 
 
   //Граф
