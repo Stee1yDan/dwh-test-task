@@ -103,8 +103,8 @@ object TestRun extends App {
         when(size(split($"fio", "\\s+")) > 3, lit(null))
         otherwise($"fio"))
     .withColumn("valid_email",
-      when($"email".rlike(emailRegex), $"email")
-      otherwise(lit(null)))
+        when($"email".rlike(emailRegex), $"email")
+        otherwise(lit(null)))
     .select(
       $"system_id",
       $"client_id",
@@ -140,7 +140,7 @@ object TestRun extends App {
         when(size(split($"full_name", "\\s+")) > 3, lit(null))
         otherwise($"full_name"))
     .withColumn("valid_email",
-      when($"email".rlike(emailRegex), $"email")
+        when($"email".rlike(emailRegex), $"email")
         otherwise(lit(null)))
     .select(
       $"system_id",
