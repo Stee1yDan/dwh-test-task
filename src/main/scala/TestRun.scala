@@ -42,14 +42,13 @@ object TestRun extends App {
       substring($"spacelessDul".cast("string"), 3, 2),
       substring($"spacelessDul".cast("string"), 5, 8)
     ))
-    .withColumn("validEmail", when($"email".rlike(emailRegex), $"email").otherwise(null))
     .select(
       $"client_id",
       $"fio",
       $"validDul".alias("dul"),
       $"dr",
       $"phones",
-      $"validEmail".alias("email"))
+      $"email")
 
   val insurance1 = df.filter(
         $"client_id".between(100,300) ||
@@ -59,7 +58,6 @@ object TestRun extends App {
     .withColumn("new_id", $"client_id" + 1500)
     .withColumn("doc_num", when($"serial_number".isNull, $"inn").otherwise(regexp_replace($"serial_number", "\\s+", "")))
     .withColumn("doc_type", when($"serial_number".isNull, lit("ИНН")).otherwise(lit("Паспорт РФ")))
-    .withColumn("validEmail", when($"email".rlike(emailRegex), $"email").otherwise(null))
     .withColumn("phones", concat_ws(";", coalesce($"phone0", lit("")), coalesce($"phone1", lit("")), coalesce($"phone3", lit("")))) //coalesce?
     .select(
       $"new_id".cast(IntegerType).alias("client_id"),
@@ -68,7 +66,7 @@ object TestRun extends App {
       $"doc_type",
       $"dr",
       $"phones".alias("phone"),
-      $"validEmail".alias("email"))
+      $"email")
 
   val market1 = df.filter(
         $"client_id".between(800,900) ||
@@ -79,14 +77,13 @@ object TestRun extends App {
     .withColumn("first_name", element_at($"name_parts",2))
     .withColumn("surname", element_at($"name_parts",-1))
     .withColumn("last_name", element_at($"name_parts",1))
-    .withColumn("validEmail", when($"email".rlike(emailRegex), $"email").otherwise(null))
     .select(
       $"new_id".cast(IntegerType).alias("client_id"),
       $"first_name",
       $"surname",
       $"last_name",
       $"phone0".alias("phone"),
-      $"validEmail".alias("email"))
+      $"email")
     //.where($"client_id" > 4000)
 
 //  bank1.show(false)
@@ -102,46 +99,65 @@ object TestRun extends App {
 
   val preBankDf = explodedBank
     .withColumn("system_id", lit("Банк 1"))
+    .withColumn("valid_name",
+        when(size(split($"fio", "\\s+")) > 3, lit(null))
+        otherwise($"fio"))
+    .withColumn("valid_email",
+      when($"email".rlike(emailRegex), $"email")
+      otherwise(lit(null)))
     .select(
       $"system_id",
       $"client_id",
-      $"fio",
+      $"valid_name".alias("fio"),
       $"dr",
       $"dul".alias("serial_number"),
       $"explodedPhones".getItem(0).alias("phone"),
       $"explodedPhones".getItem(1).alias("phone_flag"),
-      $"email")
+      $"valid_email".alias("email"))
 
   var preInsuranceDf = explodedInsurance
     .withColumn("system_id", lit("Страхование 1"))
+    .withColumn("valid_name",
+        when(size(split($"full_name", "\\s+")) > 3, lit(null))
+        otherwise($"full_name"))
+    .withColumn("valid_email",
+        when($"email".rlike(emailRegex), $"email")
+        otherwise(lit(null)))
     .select(
       $"system_id",
       $"client_id",
-      $"full_name".alias("fio"),
+      $"valid_name".alias("fio"),
       $"dr",
       $"serial_number",
       $"explodedPhones".alias("phone"), // Нужно ли обрабатывать телефоны?
       lit(null).alias("phone_flag"),
-      $"email")
+      $"valid_email".alias("email"))
 
   var preMarketDf = market1
     .withColumn("system_id", lit("Маркет 1"))
+    .withColumn("full_name", concat_ws(" ", $"last_name", $"first_name", $"surname"))
+    .withColumn("valid_name",
+        when(size(split($"full_name", "\\s+")) > 3, lit(null))
+        otherwise($"full_name"))
+    .withColumn("valid_email",
+      when($"email".rlike(emailRegex), $"email")
+        otherwise(lit(null)))
     .select(
       $"system_id",
       $"client_id",
-      concat_ws(" ", $"last_name", $"first_name", $"surname").alias("fio"),
+      $"valid_name".alias("fio"),
       lit(null).alias("dr"),
       lit(null).alias("serial_number"),
       $"phone",
       lit(null).alias("phone_flag"),
-      $"email")
+      $"valid_email".alias("email"))
 
   val final_unionized_df =
     preBankDf
       .unionAll(preInsuranceDf)
       .unionAll(preMarketDf)
-      .where("fio = 'Бородач Александр Радионович'")
-      //.show(false)
+//      .where("fio = 'Бородач Александр Радионович'")
+//      .show(false)
 
   //Банк - Страховка
   //=======================================================================================================
@@ -337,6 +353,7 @@ object TestRun extends App {
       $"insurance_client_id".as("partner_client_id"),
       $"rule_number", $"priority_weight")
 
+
   val bankToMarketRenamed = bankToMarketMatching
     .select(
       $"bank_system_id",
@@ -376,16 +393,14 @@ object TestRun extends App {
 
   val ccDF = connectedComponents.toDF("client_id", "cluster_id")
 
-  //ccDF.select("*").where("cluster_id = 1001").show()
+//  ccDF.select("*").where("cluster_id = 1001").show()
 
   val bankToInsuranceResult = bankToInsuranceRenamed
-    .withColumn("bank_client_id_long", $"bank_client_id".cast("long"))
-    .join(ccDF, $"bank_client_id_long" === ccDF("client_id"), "left")
+    .join(ccDF, $"bank_client_id" === ccDF("client_id"), "left")
     .show()
 
-  val bankToMarketResult = bankToInsuranceRenamed
-    .withColumn("bank_client_id_long", $"bank_client_id".cast("long"))
-    .join(ccDF, $"bank_client_id_long" === ccDF("client_id"), "left")
+  val bankToMarketResult = bankToMarketRenamed
+    .join(ccDF, $"bank_client_id" === ccDF("client_id"), "left")
     .show()
 
 }
