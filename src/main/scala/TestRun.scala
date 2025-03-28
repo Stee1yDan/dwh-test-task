@@ -94,7 +94,8 @@ object TestRun extends App {
   //=======================================================================================================
   //..
 
-  val explodedBank = bank1.withColumn("explodedPhones", explode($"phones"));
+  val explodedBank = bank1.withColumn("explodedPhones", explode(filter($"phones", x =>
+    x.getItem(0).isNotNull && x.getItem(1).isNotNull)));
   val explodedInsurance = insurance1.withColumn("explodedPhones", explode(split(coalesce($"phone"), ";")))
 
   val preBankDf = explodedBank
@@ -106,14 +107,14 @@ object TestRun extends App {
         when($"email".rlike(emailRegex), $"email")
         otherwise(lit(null)))
     .select(
-      $"system_id",
-      $"client_id",
-      $"valid_name".alias("fio"),
-      $"dr",
-      $"dul".alias("serial_number"),
-      $"explodedPhones".getItem(0).alias("phone"),
-      $"explodedPhones".getItem(1).alias("phone_flag"),
-      $"valid_email".alias("email"))
+      $"system_id".alias("bank_system_id"),
+      $"client_id".alias("bank_client_id"),
+      $"valid_name".alias("bank_fio"),
+      $"dr".alias("bank_dr"),
+      $"dul".alias("bank_serial_number"),
+      $"explodedPhones".getItem(0).alias("bank_phone"),
+      $"explodedPhones".getItem(1).alias("bank_phone_flag"),
+      $"valid_email".alias("bank_email"))
 
   var preInsuranceDf = explodedInsurance
     .withColumn("system_id", lit("Страхование 1"))
@@ -124,14 +125,14 @@ object TestRun extends App {
         when($"email".rlike(emailRegex), $"email")
         otherwise(lit(null)))
     .select(
-      $"system_id",
-      $"client_id",
-      $"valid_name".alias("fio"),
-      $"dr",
-      $"serial_number",
-      $"explodedPhones".alias("phone"), // Нужно ли обрабатывать телефоны?
-      lit(null).alias("phone_flag"),
-      $"valid_email".alias("email"))
+      $"system_id".alias("insurance_system_id"),
+      $"client_id".alias("insurance_client_id"),
+      $"valid_name".alias("insurance_fio"),
+      $"dr".alias("insurance_dr"),
+      $"serial_number".alias("insurance_serial_number"),
+      $"explodedPhones".alias("insurance_phone"), // Нужно ли обрабатывать телефоны?
+      lit(null).alias("insurance_phone_flag"),
+      $"valid_email".alias("insurance_email"))
 
   var preMarketDf = market1
     .withColumn("system_id", lit("Маркет 1"))
@@ -143,14 +144,14 @@ object TestRun extends App {
         when($"email".rlike(emailRegex), $"email")
         otherwise(lit(null)))
     .select(
-      $"system_id",
-      $"client_id",
-      $"valid_name".alias("fio"),
-      lit(null).alias("dr"),
-      lit(null).alias("serial_number"),
-      $"phone",
-      lit(null).alias("phone_flag"),
-      $"valid_email".alias("email"))
+      $"system_id".alias("market_system_id"),
+      $"client_id".alias("market_client_id"),
+      $"valid_name".alias("market_fio"),
+      lit(null).alias("market_dr"),
+      lit(null).alias("market_serial_number"),
+      $"phone".alias("market_phone"),
+      lit(null).alias("market_phone_flag"),
+      $"valid_email".alias("market_email"))
 
   val final_unionized_df =
     preBankDf
@@ -168,77 +169,49 @@ object TestRun extends App {
       preInsuranceDf
           .withColumn("priority_weight",lit(100))
           .withColumn("rule_number", lit(1)),
-        preBankDf("fio") === preInsuranceDf("fio") &&
-        preBankDf("phone") === preInsuranceDf("phone") &&
-        preBankDf("phone_flag") === 0 &&
-        preBankDf("dr") === preInsuranceDf("dr") &&
-        regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
-          regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
-    .select(
-      preBankDf("system_id").alias("bank_system_id"),
-      preBankDf("client_id").alias("bank_client_id"),
-      preInsuranceDf("system_id").alias("insurance_system_id"),
-      preInsuranceDf("client_id")alias("insurance_client_id"),
-      $"priority_weight",
-      $"rule_number"
-    )
+        preBankDf("bank_fio") === preInsuranceDf("insurance_fio") &&
+        preBankDf("bank_phone") === preInsuranceDf("insurance_phone") &&
+        preBankDf("bank_phone_flag") === 0 &&
+        preBankDf("bank_dr") === preInsuranceDf("insurance_dr") &&
+        regexp_replace(preBankDf("bank_serial_number"), "\\s+", "") ===
+          regexp_replace(preInsuranceDf("insurance_serial_number"), "\\s+", ""))
+    .select("*")
 
   val bankToInsuranceDfPriority80 = preBankDf
     .join(
       preInsuranceDf
         .withColumn("priority_weight",lit(80))
         .withColumn("rule_number", lit(2)),
-      preBankDf("fio") === preInsuranceDf("fio") &&
-        preBankDf("phone") === preInsuranceDf("phone") &&
-        preBankDf("phone_flag") === 1 &&
-        preBankDf("dr") === preInsuranceDf("dr") &&
-        regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
-          regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
-    .select(
-      preBankDf("system_id").alias("bank_system_id"),
-      preBankDf("client_id").alias("bank_client_id"),
-      preInsuranceDf("system_id").alias("insurance_system_id"),
-      preInsuranceDf("client_id")alias("insurance_client_id"),
-      $"priority_weight",
-      $"rule_number"
-    )
+        preBankDf("bank_fio") === preInsuranceDf("insurance_fio") &&
+        preBankDf("bank_phone") === preInsuranceDf("insurance_phone") &&
+        preBankDf("bank_phone_flag") === 1 &&
+        preBankDf("bank_dr") === preInsuranceDf("insurance_dr") &&
+        regexp_replace(preBankDf("bank_serial_number"), "\\s+", "") ===
+          regexp_replace(preInsuranceDf("insurance_serial_number"), "\\s+", ""))
+    .select("*")
 
   val bankToInsuranceDfPriority70 = preBankDf
     .join(
       preInsuranceDf
         .withColumn("priority_weight",lit(70))
         .withColumn("rule_number", lit(3)),
-        preBankDf("fio") === preInsuranceDf("fio") &&
-        preBankDf("email") === preInsuranceDf("email") &&
-        preBankDf("dr") === preInsuranceDf("dr") &&
-        regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
-          regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
-    .select(
-      preBankDf("system_id").alias("bank_system_id"),
-      preBankDf("client_id").alias("bank_client_id"),
-      preInsuranceDf("system_id").alias("insurance_system_id"),
-      preInsuranceDf("client_id").alias("insurance_client_id"),
-      $"priority_weight",
-      $"rule_number"
-    )
+        preBankDf("bank_fio") === preInsuranceDf("insurance_fio") &&
+        preBankDf("bank_email") === preInsuranceDf("insurance_email") &&
+        preBankDf("bank_dr") === preInsuranceDf("insurance_dr") &&
+        regexp_replace(preBankDf("bank_serial_number"), "\\s+", "") ===
+          regexp_replace(preInsuranceDf("insurance_serial_number"), "\\s+", ""))
+    .select("*")
 
   val bankToInsuranceDfPriority60 = preBankDf
     .join(
       preInsuranceDf
         .withColumn("priority_weight",lit(60))
         .withColumn("rule_number", lit(4)),
-        preBankDf("fio") === preInsuranceDf("fio") &&
-        preBankDf("dr") === preInsuranceDf("dr") &&
-        regexp_replace(preBankDf("serial_number"), "\\s+", "") ===
-          regexp_replace(preInsuranceDf("serial_number"), "\\s+", ""))
-    .select(
-      preBankDf("system_id").alias("bank_system_id"),
-      preBankDf("client_id").alias("bank_client_id"),
-      preInsuranceDf("system_id").alias("insurance_system_id"),
-      preInsuranceDf("client_id").alias("insurance_client_id"),
-      $"priority_weight",
-      $"rule_number"
-    )
+        preBankDf("bank_fio") === preInsuranceDf("insurance_fio") &&
+        preBankDf("bank_dr") === preInsuranceDf("insurance_dr") &&
+        regexp_replace(preBankDf("bank_serial_number"), "\\s+", "") ===
+          regexp_replace(preInsuranceDf("insurance_serial_number"), "\\s+", ""))
+    .select("*")
 
   val bankToInsuranceMatching = bankToInsuranceDfPriority100
     .unionAll(bankToInsuranceDfPriority80)
@@ -272,51 +245,30 @@ object TestRun extends App {
       preMarketDf
           .withColumn("priority_weight",lit(100))
           .withColumn("rule_number", lit(1)),
-        preBankDf("fio") === preMarketDf("fio") &&
-        preBankDf("phone") === preMarketDf("phone") &&
-        preBankDf("phone_flag") === 0 &&
-        preBankDf("email") === preMarketDf("email"))
-    .select(
-      preBankDf("system_id").alias("bank_system_id"),
-      preBankDf("client_id").alias("bank_client_id"),
-      preMarketDf("system_id").alias("market_system_id"),
-      preMarketDf("client_id").alias("market_client_id"),
-      $"priority_weight",
-      $"rule_number"
-    )
+        preBankDf("bank_fio") === preMarketDf("market_fio") &&
+        preBankDf("bank_phone") === preMarketDf("market_phone") &&
+        preBankDf("bank_phone_flag") === 0 &&
+        preBankDf("bank_email") === preMarketDf("market_email"))
+    .select("*")
 
   val bankToMarketDfPriority80 = preBankDf
     .join(
       preMarketDf
           .withColumn("priority_weight",lit(80))
           .withColumn("rule_number", lit(2)),
-        preBankDf("fio") === preMarketDf("fio") &&
-        preBankDf("phone") === preMarketDf("phone") &&
-        preBankDf("phone_flag") === 0)
-    .select(
-      preBankDf("system_id").alias("bank_system_id"),
-      preBankDf("client_id").alias("bank_client_id"),
-      preMarketDf("system_id").alias("market_system_id"),
-      preMarketDf("client_id").alias("market_client_id"),
-      $"priority_weight",
-      $"rule_number"
-    )
+        preBankDf("bank_fio") === preMarketDf("market_fio") &&
+        preBankDf("bank_phone") === preMarketDf("market_phone") &&
+        preBankDf("bank_phone_flag") === 0)
+    .select("*")
 
   val bankToMarketDfPriority70 = preBankDf
     .join(
       preMarketDf
           .withColumn("priority_weight",lit(70))
           .withColumn("rule_number", lit(3)),
-        preBankDf("fio") === preMarketDf("fio") &&
-        preBankDf("email") === preMarketDf("email"))
-    .select(
-      preBankDf("system_id").alias("bank_system_id"),
-      preBankDf("client_id").alias("bank_client_id"),
-      preMarketDf("system_id").alias("market_system_id"),
-      preMarketDf("client_id").alias("market_client_id"),
-      $"priority_weight",
-      $"rule_number"
-    )
+        preBankDf("bank_fio") === preMarketDf("market_fio") &&
+        preBankDf("bank_email") === preMarketDf("market_email"))
+    .select("*")
 
   val bankToMarketMatching = bankToMarketDfPriority100
     .unionAll(bankToMarketDfPriority80)
@@ -340,6 +292,44 @@ object TestRun extends App {
 //      )
 //      .where($"countingDup" > 1)
 //      .show(1000, false)
+
+  val dfForConfirmation = bankToInsuranceMatching
+    .select(
+      $"bank_system_id".alias("system_id"),
+      $"bank_client_id".alias("client_id"),
+      $"bank_fio".alias("fio"),
+      $"bank_dr".alias("dr"),
+      regexp_replace($"bank_serial_number", "\\s+", "").alias("serial_number"),
+      $"bank_phone".alias("phone"),
+      $"bank_phone_flag".alias("phone_flag"),
+      $"bank_email".alias("email")
+    )
+    .unionAll(
+      bankToInsuranceMatching.select(
+        $"insurance_system_id".alias("system_id"),
+        $"insurance_client_id".alias("client_id"),
+        $"insurance_fio".alias("fio"),
+        $"insurance_dr".alias("dr"),
+        $"insurance_serial_number".alias("serial_number"),
+        $"insurance_phone".alias("phone"),
+        $"insurance_phone_flag".alias("phone_flag"),
+        $"insurance_email".alias("email")
+      )
+    )
+    .unionAll(
+      bankToMarketMatching.select(
+        $"market_system_id".alias("system_id"),
+        $"market_client_id".alias("client_id"),
+        $"market_fio".alias("fio"),
+        $"bank_dr".alias("dr"), //market_dr is null
+        $"market_serial_number".alias("serial_number"),
+        $"market_phone".alias("phone"),
+        $"market_phone_flag".alias("phone_flag"),
+        $"market_email".alias("email")
+      )
+    )
+    .where("fio = 'Бородач Александр Радионович'")
+    .show(false)
 
   //Граф
   //=======================================================================================================
