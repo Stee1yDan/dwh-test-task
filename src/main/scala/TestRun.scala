@@ -58,7 +58,7 @@ object TestRun extends App {
     .withColumn("new_id", $"client_id" + 1500)
     .withColumn("doc_num", when($"serial_number".isNull, $"inn").otherwise(regexp_replace($"serial_number", "\\s+", "")))
     .withColumn("doc_type", when($"serial_number".isNull, lit("ИНН")).otherwise(lit("Паспорт РФ")))
-    .withColumn("phones", concat_ws(";", coalesce($"phone0", lit("")), coalesce($"phone1", lit("")), coalesce($"phone3", lit("")))) //coalesce?
+    .withColumn("phones", trim(concat_ws(" ", coalesce($"phone0", lit("")), coalesce($"phone1", lit("")), coalesce($"phone3", lit(""))))) //coalesce?
     .select(
       $"new_id".cast(IntegerType).alias("client_id"),
       $"fio".alias("full_name"),
@@ -82,6 +82,7 @@ object TestRun extends App {
       $"first_name",
       $"surname",
       $"last_name",
+      //coalesce($"phone0",$"phone1").alias("phone"),
       $"phone0".alias("phone"),
       $"email")
     //.where($"client_id" > 4000)
@@ -96,7 +97,7 @@ object TestRun extends App {
 
   val explodedBank = bank1.withColumn("explodedPhones", explode(filter($"phones", x =>
     x.getItem(0).isNotNull && x.getItem(1).isNotNull)));
-  val explodedInsurance = insurance1.withColumn("explodedPhones", explode(split(coalesce($"phone"), ";")))
+  val explodedInsurance = insurance1.withColumn("explodedPhones", explode(split($"phone", " ")))
 
   val preBankDf = explodedBank
     .withColumn("system_id", lit("Банк 1"))
@@ -157,8 +158,8 @@ object TestRun extends App {
     preBankDf
       .unionAll(preInsuranceDf)
       .unionAll(preMarketDf)
-//      .where("fio = 'Бородач Александр Радионович'")
-//      .show(false)
+      .where("bank_fio = 'Бородач Александр Радионович'")
+      .show(false)
 
   //Банк - Страховка
   //=======================================================================================================
@@ -328,8 +329,18 @@ object TestRun extends App {
         $"market_email".alias("email")
       )
     )
+
+  dfForConfirmation
+    .withColumn("ins_1", md5(concat($"fio", $"phone", $"dr", $"serial_number")))
+    .withColumn("ins_3", md5(concat($"fio", $"email", $"dr", $"serial_number")))
+    .withColumn("ins_4", md5(concat($"fio", $"dr", $"serial_number")))
+    .withColumn("shop_1", md5(concat($"fio", $"phone", $"email")))
+    .withColumn("shop_2", md5(concat($"fio", $"phone")))
+    .withColumn("shop_3", md5(concat($"fio", $"email")))
+    .select("*")
     .where("fio = 'Бородач Александр Радионович'")
-    .show(false)
+    .show()
+
 
   //Граф
   //=======================================================================================================
