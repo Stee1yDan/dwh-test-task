@@ -156,9 +156,18 @@ object TestRun extends App {
 
   val final_unionized_df =
     preBankDf
+      .select(
+        $"bank_system_id".alias("system_id"),
+        $"bank_client_id".alias("client_id"),
+        $"bank_fio".alias("fio"),
+        $"bank_dr".alias("dr"),
+        regexp_replace($"bank_serial_number", "\\s+", "").alias("serial_number"),
+        $"bank_phone".alias("phone"),
+        $"bank_phone_flag".alias("phone_flag"),
+        $"bank_email".alias("email")
+      )
       .unionAll(preInsuranceDf)
       .unionAll(preMarketDf)
-      .where("bank_fio = 'Бородач Александр Радионович'")
       .show(false)
 
   //Банк - Страховка
@@ -307,39 +316,40 @@ object TestRun extends App {
     )
     .unionAll(
       bankToInsuranceMatching.select(
-        $"insurance_system_id".alias("system_id"),
-        $"insurance_client_id".alias("client_id"),
-        $"insurance_fio".alias("fio"),
-        $"insurance_dr".alias("dr"),
-        $"insurance_serial_number".alias("serial_number"),
-        $"insurance_phone".alias("phone"),
-        $"insurance_phone_flag".alias("phone_flag"),
-        $"insurance_email".alias("email")
-      )
+          $"insurance_system_id".alias("system_id"),
+          $"insurance_client_id".alias("client_id"),
+          $"insurance_fio".alias("fio"),
+          $"insurance_dr".alias("dr"),
+          $"insurance_serial_number".alias("serial_number"),
+          $"insurance_phone".alias("phone"),
+          $"insurance_phone_flag".alias("phone_flag"),
+          $"insurance_email".alias("email")
+        )
     )
     .unionAll(
       bankToMarketMatching.select(
         $"market_system_id".alias("system_id"),
         $"market_client_id".alias("client_id"),
         $"market_fio".alias("fio"),
-        $"bank_dr".alias("dr"), //market_dr is null
+        $"market_dr".alias("dr"),
         $"market_serial_number".alias("serial_number"),
         $"market_phone".alias("phone"),
         $"market_phone_flag".alias("phone_flag"),
         $"market_email".alias("email")
       )
-    )
+    ).distinct()
 
   dfForConfirmation
-    .withColumn("ins_1", md5(concat($"fio", $"phone", $"dr", $"serial_number")))
+    .withColumn("ins_1", md5(concat($"fio", when(($"phone_flag" === 0), $"phone").otherwise(lit(null)), $"dr", $"serial_number")))
+    .withColumn("ins_2", md5(concat($"fio", when(($"phone_flag" === 1), $"phone").otherwise(lit(null)), $"dr", $"serial_number")))
     .withColumn("ins_3", md5(concat($"fio", $"email", $"dr", $"serial_number")))
     .withColumn("ins_4", md5(concat($"fio", $"dr", $"serial_number")))
-    .withColumn("shop_1", md5(concat($"fio", $"phone", $"email")))
-    .withColumn("shop_2", md5(concat($"fio", $"phone")))
+    .withColumn("shop_1", md5(concat($"fio", when(($"phone_flag" === 0), $"phone").otherwise(lit(null)), $"email")))
+    .withColumn("shop_2", md5(concat($"fio", when(($"phone_flag" === 0), $"phone").otherwise(lit(null)))))
     .withColumn("shop_3", md5(concat($"fio", $"email")))
     .select("*")
-    .where("fio = 'Бородач Александр Радионович'")
-    .show()
+    //.where("fio = 'Бородач Александр Радионович'")
+    .show(1000)
 
 
   //Граф
@@ -398,10 +408,22 @@ object TestRun extends App {
 
   val bankToInsuranceResult = bankToInsuranceRenamed
     .join(ccDF, $"bank_client_id" === ccDF("client_id"), "left")
+    .groupBy($"bank_system_id",
+              $"bank_client_id",
+              $"partner_system_id",
+              $"partner_client_id",
+              $"cluster_id")
+    .agg(collect_set("rule_number").as("rule_set"))
     .show()
 
   val bankToMarketResult = bankToMarketRenamed
     .join(ccDF, $"bank_client_id" === ccDF("client_id"), "left")
+    .groupBy($"bank_system_id",
+              $"bank_client_id",
+              $"partner_system_id",
+              $"partner_client_id",
+              $"cluster_id")
+    .agg(collect_set("rule_number").as("rule_set"))
     .show()
 
 }
