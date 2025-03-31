@@ -168,6 +168,7 @@ object TestRun extends App {
       )
       .unionAll(preInsuranceDf)
       .unionAll(preMarketDf)
+      .where("fio = 'Бородач Александр Радионович'")
       .show(false)
 
   //Банк - Страховка
@@ -234,7 +235,7 @@ object TestRun extends App {
         "insurance_system_id",
         "insurance_client_id")))
     .select($"*")
-    .where("max_weight = priority_weight")
+//    .where("max_weight = priority_weight")
 //    .groupBy(
 //      "bank_system_id",
 //      "bank_client_id",
@@ -290,7 +291,7 @@ object TestRun extends App {
         "market_system_id",
         "market_client_id")))
     .select("*")
-    .where("max_weight = priority_weight")
+//    .where("max_weight = priority_weight")
 //      .groupBy(
 //        "bank_system_id",
 //        "bank_client_id",
@@ -314,6 +315,7 @@ object TestRun extends App {
       $"bank_phone_flag".alias("phone_flag"),
       $"bank_email".alias("email")
     )
+    .where("max_weight = priority_weight")
     .unionAll(
       bankToInsuranceMatching.select(
           $"insurance_system_id".alias("system_id"),
@@ -325,6 +327,7 @@ object TestRun extends App {
           $"bank_phone_flag".alias("phone_flag"),
           $"insurance_email".alias("email")
         )
+        .where("max_weight = priority_weight")
     )
     .unionAll(
       bankToMarketMatching.select(
@@ -337,6 +340,7 @@ object TestRun extends App {
         $"bank_phone_flag".alias("phone_flag"),
         $"market_email".alias("email")
       )
+        .where("max_weight = priority_weight")
     ).distinct()
 
   import org.apache.spark.sql.functions._
