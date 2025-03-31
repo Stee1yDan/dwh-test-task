@@ -322,7 +322,7 @@ object TestRun extends App {
           $"insurance_dr".alias("dr"),
           $"insurance_serial_number".alias("serial_number"),
           $"insurance_phone".alias("phone"),
-          $"insurance_phone_flag".alias("phone_flag"),
+          $"bank_phone_flag".alias("phone_flag"),
           $"insurance_email".alias("email")
         )
     )
@@ -334,23 +334,85 @@ object TestRun extends App {
         $"market_dr".alias("dr"),
         $"market_serial_number".alias("serial_number"),
         $"market_phone".alias("phone"),
-        $"market_phone_flag".alias("phone_flag"),
+        $"bank_phone_flag".alias("phone_flag"),
         $"market_email".alias("email")
       )
     ).distinct()
 
-  dfForConfirmation
-    .withColumn("ins_1", md5(concat($"fio", when(($"phone_flag" === 0), $"phone").otherwise(lit(null)), $"dr", $"serial_number")))
-    .withColumn("ins_2", md5(concat($"fio", when(($"phone_flag" === 1), $"phone").otherwise(lit(null)), $"dr", $"serial_number")))
-    .withColumn("ins_3", md5(concat($"fio", $"email", $"dr", $"serial_number")))
-    .withColumn("ins_4", md5(concat($"fio", $"dr", $"serial_number")))
-    .withColumn("shop_1", md5(concat($"fio", when(($"phone_flag" === 0), $"phone").otherwise(lit(null)), $"email")))
-    .withColumn("shop_2", md5(concat($"fio", when(($"phone_flag" === 0), $"phone").otherwise(lit(null)))))
-    .withColumn("shop_3", md5(concat($"fio", $"email")))
-    .select("*")
-    //.where("fio = 'Бородач Александр Радионович'")
-    .show(1000)
+  import org.apache.spark.sql.functions._
+  import spark.implicits._
 
+  import org.apache.spark.sql.functions._
+  import spark.implicits._
+
+  dfForConfirmation
+    .withColumn("ins_1",
+      when(!col("system_id").startsWith("Маркет"),
+        md5(concat(
+          coalesce($"fio", lit("")),
+          when(($"phone_flag" === 0), coalesce($"phone", lit(""))).otherwise(lit("")),
+          coalesce($"dr", lit("")),
+          coalesce($"serial_number", lit(""))
+        ))
+      )
+    )
+    .withColumn("ins_2",
+      when(!col("system_id").startsWith("Маркет"),
+        md5(concat(
+          coalesce($"fio", lit("")),
+          when(($"phone_flag" === 1), coalesce($"phone", lit(""))).otherwise(lit("")),
+          coalesce($"dr", lit("")),
+          coalesce($"serial_number", lit(""))
+        ))
+      )
+    )
+    .withColumn("ins_3",
+      when(!col("system_id").startsWith("Маркет"),
+        md5(concat(
+          coalesce($"fio", lit("")),
+          coalesce($"email", lit("")),
+          coalesce($"dr", lit("")),
+          coalesce($"serial_number", lit(""))
+        ))
+      )
+    )
+    .withColumn("ins_4",
+      when(!col("system_id").startsWith("Маркет"),
+        md5(concat(
+          coalesce($"fio", lit("")),
+          coalesce($"dr", lit("")),
+          coalesce($"serial_number", lit(""))
+        ))
+      )
+    )
+    .withColumn("shop_1",
+      when(!col("system_id").startsWith("Страхование"),
+        md5(concat(
+          coalesce($"fio", lit("")),
+          when(($"phone_flag" === 0), coalesce($"phone", lit(""))).otherwise(lit("")),
+          coalesce($"email", lit(""))
+        ))
+      )
+    )
+    .withColumn("shop_2",
+      when(!col("system_id").startsWith("Страхование"),
+        md5(concat(
+          coalesce($"fio", lit("")),
+          when(($"phone_flag" === 0), coalesce($"phone", lit(""))).otherwise(lit(""))
+        ))
+      )
+    )
+    .withColumn("shop_3",
+      when(!col("system_id").startsWith("Страхование"),
+        md5(concat(
+          coalesce($"fio", lit("")),
+          coalesce($"email", lit(""))
+        ))
+      )
+    )
+    .select("*")
+    .where("fio = 'Бородач Александр Радионович'")
+    .show()
 
   //Граф
   //=======================================================================================================
